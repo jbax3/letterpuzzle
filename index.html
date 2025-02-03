@@ -26,12 +26,13 @@
   </style>
 </head>
 <body>
-  <h1>Letter Puzzle Generator (Full Alphabet, Pan & Zoom, Infinite Grid)</h1>
+  <h1>Letter Puzzle Generator</h1>
   <div id="controls">
     <label for="wordInput">Enter a word (A–Z): </label>
     <input type="text" id="wordInput" value="HELLO" maxlength="20">
     <button id="generateButton">Generate Puzzle</button>
     <p>Drag to pan; use the mouse wheel to zoom.</p>
+    <p>Press the right arrow key to step through the solution.</p>
   </div>
   <canvas id="puzzleCanvas" width="900" height="350"></canvas>
 
@@ -50,6 +51,10 @@
     let currentPuzzleSegments = []; // Holds generated segments
     let currentPuzzleBBoxes = [];   // Bounding boxes for collision checking
 
+    // Global variables for solution stepping
+    let solutionStep = 0;    // Current solution step (0 = initial position)
+    let maxSolutionStep = 0; // Maximum number of steps needed across all segments
+
     // -------------------------------
     // Letter Definitions (Full Alphabet)
     // -------------------------------
@@ -57,160 +62,188 @@
     // using only horizontal and vertical segments.
     // These definitions are simplified approximations with some tweaks (e.g. M, N, W).
     const letterData = {
-      "A": [
-        { start: [1,0], end: [3,0] },   // top horizontal
-        { start: [0,1], end: [0,5] },   // left vertical
-        { start: [4,1], end: [4,5] },   // right vertical
-        { start: [1,3], end: [3,3] }    // middle horizontal
-      ],
-      "B": [
-        { start: [0,0], end: [0,6] },
-        { start: [0,0], end: [3,0] },
-        { start: [3,0], end: [3,3] },
-        { start: [0,3], end: [3,3] },
-        { start: [3,3], end: [3,6] },
-        { start: [0,6], end: [3,6] }
-      ],
-      "C": [
-        { start: [3,0], end: [0,0] },
-        { start: [0,0], end: [0,6] },
-        { start: [0,6], end: [3,6] }
-      ],
-      "D": [
-        { start: [0,0], end: [0,6] },
-        { start: [0,0], end: [3,0] },
-        { start: [3,0], end: [3,6] },
-        { start: [0,6], end: [3,6] }
-      ],
-      "E": [
-        { start: [3,0], end: [0,0] },
-        { start: [0,0], end: [0,6] },
-        { start: [0,3], end: [2,3] },
-        { start: [0,6], end: [3,6] }
-      ],
-      "F": [
-        { start: [0,0], end: [3,0] },
-        { start: [0,0], end: [0,6] },
-        { start: [0,3], end: [2,3] }
-      ],
-      "G": [
-        { start: [3,0], end: [0,0] },
-        { start: [0,0], end: [0,6] },
-        { start: [0,6], end: [3,6] },
-        { start: [3,6], end: [3,3] },
-        { start: [2,3], end: [3,3] }
-      ],
-      "H": [
-        { start: [0,0], end: [0,6] },
-        { start: [4,0], end: [4,6] },
-        { start: [0,3], end: [4,3] }
-      ],
-      "I": [
-        { start: [2,0], end: [2,6] },
-        { start: [0,0], end: [4,0] },
-        { start: [0,6], end: [4,6] }
-      ],
-      "J": [
-        { start: [4,0], end: [4,6] },
-        { start: [4,6], end: [0,6] }
-      ],
-      "K": [
-        { start: [0,0], end: [0,6] },
-        { start: [0,3], end: [3,3] },
-        { start: [3,0], end: [3,3] },
-        { start: [3,3], end: [3,6] }
-      ],
-      "L": [
-        { start: [0,0], end: [0,6] },
-        { start: [0,6], end: [4,6] }
-      ],
-      // --- Updated "M": Uses stepped approximations for the diagonals.
-      "M": [
-        { start: [0,6], end: [0,0] },   // left vertical (bottom-to-top)
-        { start: [0,0], end: [2,0] },   // top horizontal (left part)
-        { start: [2,0], end: [2,3] },   // vertical down from top middle
-        { start: [2,3], end: [4,3] },   // horizontal connecting left & right diagonals
-        { start: [4,3], end: [4,0] },   // vertical up for right diagonal
-        { start: [4,0], end: [4,6] }    // right vertical
-      ],
-      // --- Updated "N": Uses a stepped diagonal.
-      "N": [
-        { start: [0,6], end: [0,0] },   // left vertical
-        { start: [0,0], end: [2,3] },   // stepped diagonal part 1
-        { start: [2,3], end: [4,6] },   // stepped diagonal part 2
-        { start: [4,6], end: [4,0] }    // right vertical (top-to-bottom)
-      ],
-      "O": [
-        { start: [0,0], end: [4,0] },
-        { start: [4,0], end: [4,6] },
-        { start: [4,6], end: [0,6] },
-        { start: [0,6], end: [0,0] }
-      ],
-      "P": [
-        { start: [0,0], end: [0,6] },
-        { start: [0,0], end: [4,0] },
-        { start: [4,0], end: [4,3] },
-        { start: [0,3], end: [4,3] }
-      ],
-      "Q": [
-        { start: [0,0], end: [4,0] },
-        { start: [4,0], end: [4,6] },
-        { start: [4,6], end: [0,6] },
-        { start: [0,6], end: [0,0] },
-        { start: [3,4], end: [4,6] }    // extra tail stroke
-      ],
-      "R": [
-        { start: [0,0], end: [0,6] },
-        { start: [0,0], end: [4,0] },
-        { start: [4,0], end: [4,3] },
-        { start: [0,3], end: [4,3] },
-        { start: [2,3], end: [2,6] }
-      ],
-      "S": [
-        { start: [4,0], end: [0,0] },
-        { start: [0,0], end: [0,3] },
-        { start: [0,3], end: [4,3] },
-        { start: [4,3], end: [4,6] },
-        { start: [4,6], end: [0,6] }
-      ],
-      "T": [
-        { start: [0,0], end: [4,0] },
-        { start: [2,0], end: [2,6] }
-      ],
-      "U": [
-        { start: [0,0], end: [0,5] },
-        { start: [4,0], end: [4,5] },
-        { start: [0,5], end: [4,5] }
-      ],
-      // For "V", reuse U's design.
-      "V": [
-        { start: [0,0], end: [0,5] },
-        { start: [4,0], end: [4,5] },
-        { start: [0,5], end: [4,5] }
-      ],
-      // --- Updated "W": Uses a stepped diagonal with a lower middle point.
-      "W": [
-        { start: [0,0], end: [0,6] },
-        { start: [0,6], end: [2,4] },
-        { start: [2,4], end: [4,6] },
-        { start: [4,6], end: [4,0] }
-      ],
-      // "X" is approximated as a plus sign.
-      "X": [
-        { start: [2,0], end: [2,6] },
-        { start: [0,3], end: [4,3] }
-      ],
-      // "Y" approximated as a T.
-      "Y": [
-        { start: [0,0], end: [4,0] },
-        { start: [2,0], end: [2,6] }
-      ],
-      "Z": [
-        { start: [0,0], end: [4,0] },
-        { start: [0,3], end: [4,3] },
-        { start: [0,6], end: [4,6] }
-      ]
-    };
+  // “A”: drawn with two diagonals and a crossbar.
+  "A": [
+    { start: [0, 6], end: [2, 0] },
+    { start: [2, 0], end: [4, 6] },
+    { start: [1, 3], end: [3, 3] }
+  ],
+  // “B”: a vertical spine with two “bowl‐shaped” halves.
+  "B": [
+    { start: [0, 0], end: [0, 6] },
+    // Top bowl
+    { start: [0, 0], end: [3, 0] },
+    { start: [3, 0], end: [3, 3] },
+    { start: [3, 3], end: [0, 3] },
+    // Bottom bowl
+    { start: [0, 3], end: [3, 3] },
+    { start: [3, 3], end: [3, 6] },
+    { start: [3, 6], end: [0, 6] }
+  ],
+  // “C”: an open “arc” with top and bottom strokes.
+  "C": [
+    { start: [3, 0], end: [0, 0] },
+    { start: [0, 0], end: [0, 6] },
+    { start: [0, 6], end: [3, 6] }
+  ],
+  // “D”: left vertical and a curved right side approximated by two segments.
+  "D": [
+    { start: [0, 0], end: [0, 6] },
+    { start: [0, 0], end: [3, 0] },
+    { start: [3, 0], end: [4, 3] },
+    { start: [4, 3], end: [3, 6] },
+    { start: [3, 6], end: [0, 6] }
+  ],
+  // “E”: vertical spine with three horizontal strokes.
+  "E": [
+    { start: [0, 0], end: [3, 0] },
+    { start: [0, 0], end: [0, 6] },
+    { start: [0, 3], end: [2, 3] },
+    { start: [0, 6], end: [3, 6] }
+  ],
+  // “F”: as “E” but without the bottom stroke.
+  "F": [
+    { start: [0, 0], end: [3, 0] },
+    { start: [0, 0], end: [0, 6] },
+    { start: [0, 3], end: [2, 3] }
+  ],
+  // “G”: an “O” with an opening and a small internal horizontal.
+  "G": [
+    { start: [3, 0], end: [0, 0] },
+    { start: [0, 0], end: [0, 6] },
+    { start: [0, 6], end: [3, 6] },
+    { start: [3, 6], end: [3, 4] },
+    { start: [3, 4], end: [2, 4] }
+  ],
+  // “H”: two vertical strokes with a centered horizontal crossbar.
+  "H": [
+    { start: [0, 0], end: [0, 6] },
+    { start: [4, 0], end: [4, 6] },
+    { start: [0, 3], end: [4, 3] }
+  ],
+  // “I”: a central vertical with top and bottom horizontals.
+  "I": [
+    { start: [2, 0], end: [2, 6] },
+    { start: [0, 0], end: [4, 0] },
+    { start: [0, 6], end: [4, 6] }
+  ],
+  // “J”: a top horizontal, a vertical stroke on the right and a curved bottom.
+  "J": [
+    { start: [0, 0], end: [4, 0] },
+    { start: [4, 0], end: [4, 5] },
+    { start: [4, 5], end: [2, 6] },
+    { start: [2, 6], end: [0, 5] }
+  ],
+  // “K”: left vertical and two diagonals from the center.
+  "K": [
+    { start: [0, 0], end: [0, 6] },
+    { start: [0, 3], end: [4, 0] },
+    { start: [0, 3], end: [4, 6] }
+  ],
+  // “L”: a vertical stroke and a bottom horizontal.
+  "L": [
+    { start: [0, 0], end: [0, 6] },
+    { start: [0, 6], end: [4, 6] }
+  ],
+  // “M”: two verticals with crossing diagonals.
+  "M": [
+    { start: [0, 6], end: [0, 0] },
+    { start: [0, 0], end: [2, 3] },
+    { start: [2, 3], end: [4, 0] },
+    { start: [4, 0], end: [4, 6] }
+  ],
+  // “N”: left vertical, a diagonal and a right vertical.
+  "N": [
+    { start: [0, 6], end: [0, 0] },
+    { start: [0, 0], end: [4, 6] },
+    { start: [4, 6], end: [4, 0] }
+  ],
+  // “O”: approximated by a hexagon for a more rounded look.
+  "O": [
+    { start: [1, 0], end: [3, 0] },
+    { start: [3, 0], end: [4, 3] },
+    { start: [4, 3], end: [3, 6] },
+    { start: [3, 6], end: [1, 6] },
+    { start: [1, 6], end: [0, 3] },
+    { start: [0, 3], end: [1, 0] }
+  ],
+  // “P”: like “B” but with only the top bowl.
+  "P": [
+    { start: [0, 0], end: [0, 6] },
+    { start: [0, 0], end: [4, 0] },
+    { start: [4, 0], end: [4, 3] },
+    { start: [4, 3], end: [0, 3] }
+  ],
+  // “Q”: an “O” with an extra tail stroke.
+  "Q": [
+    { start: [1, 0], end: [3, 0] },
+    { start: [3, 0], end: [4, 3] },
+    { start: [4, 3], end: [3, 6] },
+    { start: [3, 6], end: [1, 6] },
+    { start: [1, 6], end: [0, 3] },
+    { start: [0, 3], end: [1, 0] },
+    { start: [3, 4], end: [4, 6] }
+  ],
+  // “R”: like “P” but with a diagonal leg.
+  "R": [
+    { start: [0, 0], end: [0, 6] },
+    { start: [0, 0], end: [4, 0] },
+    { start: [4, 0], end: [4, 3] },
+    { start: [4, 3], end: [0, 3] },
+    { start: [0, 3], end: [4, 6] }
+  ],
+  // “S”: a curved S‐shape approximated by five strokes.
+  "S": [
+    { start: [4, 1], end: [1, 0] },
+    { start: [1, 0], end: [0, 3] },
+    { start: [0, 3], end: [3, 3] },
+    { start: [3, 3], end: [4, 5] },
+    { start: [4, 5], end: [1, 6] }
+  ],
+  // “T”: a top horizontal and a centered vertical.
+  "T": [
+    { start: [0, 0], end: [4, 0] },
+    { start: [2, 0], end: [2, 6] }
+  ],
+  // “U”: drawn with a slight curve along the bottom.
+  "U": [
+    { start: [0, 0], end: [0, 4] },
+    { start: [0, 4], end: [1, 6] },
+    { start: [1, 6], end: [3, 6] },
+    { start: [3, 6], end: [4, 4] },
+    { start: [4, 4], end: [4, 0] }
+  ],
+  // “V”: two diagonals meeting at the bottom center.
+  "V": [
+    { start: [0, 0], end: [2, 6] },
+    { start: [2, 6], end: [4, 0] }
+  ],
+  // “W”: two connected “V” shapes.
+  "W": [
+    { start: [0, 0], end: [1, 6] },
+    { start: [1, 6], end: [2, 3] },
+    { start: [2, 3], end: [3, 6] },
+    { start: [3, 6], end: [4, 0] }
+  ],
+  // “X”: two crossing diagonals.
+  "X": [
+    { start: [0, 0], end: [4, 6] },
+    { start: [4, 0], end: [0, 6] }
+  ],
+  // “Y”: a “V” on top with a vertical tail.
+  "Y": [
+    { start: [0, 0], end: [2, 3] },
+    { start: [4, 0], end: [2, 3] },
+    { start: [2, 3], end: [2, 6] }
+  ],
+  // “Z”: a top horizontal, a diagonal and a bottom horizontal.
+  "Z": [
+    { start: [0, 0], end: [4, 0] },
+    { start: [4, 0], end: [0, 6] },
+    { start: [0, 6], end: [4, 6] }
+  ]
+};
+
 
     // -------------------------------
     // Global Settings for Drawing
@@ -398,11 +431,19 @@
         });
         currentXOffset += letterWidth + letterSpacing;
       }
+      // Reset the solution step to 0 so segments are shown in their scrambled positions.
+      solutionStep = 0;
+      // Determine the maximum number of steps needed among all segments.
+      maxSolutionStep = 0;
+      currentPuzzleSegments.forEach(seg => {
+        let mag = Math.abs(seg.move[0]) + Math.abs(seg.move[1]);
+        if (mag > maxSolutionStep) maxSolutionStep = mag;
+      });
       drawPuzzle();
     }
 
     // -------------------------------
-    // Drawing the Puzzle with Pan & Zoom
+    // Drawing the Puzzle with Pan, Zoom & Step-by-Step Solution
     // -------------------------------
     function drawPuzzle() {
       ctx.save();
@@ -414,27 +455,40 @@
       // Draw grid over the full visible area.
       drawGrid(canvas.width, canvas.height);
 
-      // Draw each segment.
+      // For each segment, compute the current drawn position based on solutionStep.
       currentPuzzleSegments.forEach(seg => {
-        const [x1, y1] = seg.initStart;
-        const [x2, y2] = seg.initEnd;
-        drawLine(x1, y1, x2, y2, seg.color);
-        drawCircle(x1, y1, seg.color);
-        drawCircle(x2, y2, seg.color);
+        // The move vector is either horizontal or vertical.
+        let mag = Math.abs(seg.move[0]) + Math.abs(seg.move[1]); // total steps needed for this segment
+        // Determine how many units to move (do not exceed the move magnitude).
+        let step = Math.min(solutionStep, mag);
+        // Compute current positions by moving step-by-step from initial toward final.
+        let curStart = [
+          seg.initStart[0] + (seg.move[0] !== 0 ? step * Math.sign(seg.move[0]) : 0),
+          seg.initStart[1] + (seg.move[1] !== 0 ? step * Math.sign(seg.move[1]) : 0)
+        ];
+        let curEnd = [
+          seg.initEnd[0] + (seg.move[0] !== 0 ? step * Math.sign(seg.move[0]) : 0),
+          seg.initEnd[1] + (seg.move[1] !== 0 ? step * Math.sign(seg.move[1]) : 0)
+        ];
 
-        const bbox = getBBox(x1, y1, x2, y2);
-        // Draw arrow starting at the top-right of the segment's bounding box.
-        const arrowStartX = bbox.maxX;
-        const arrowStartY = bbox.minY;
-        const arrowLength = 1.5; // in grid units
-        let dx = 0, dy = 0;
-        if (seg.move[0] > 0) dx = arrowLength;
-        else if (seg.move[0] < 0) dx = -arrowLength;
-        if (seg.move[1] > 0) dy = arrowLength;
-        else if (seg.move[1] < 0) dy = -arrowLength;
-        drawArrow(arrowStartX, arrowStartY, arrowStartX + dx, arrowStartY + dy);
-        const moveMag = Math.abs(seg.move[0]) + Math.abs(seg.move[1]);
-        drawText(moveMag, bbox.maxX + 0.2, bbox.minY - 0.2);
+        // Draw the segment (line and its endpoints).
+        drawLine(curStart[0], curStart[1], curEnd[0], curEnd[1], seg.color);
+        drawCircle(curStart[0], curStart[1], seg.color);
+        drawCircle(curEnd[0], curEnd[1], seg.color);
+
+        // If the segment has not reached its final position, draw an arrow indicating the remaining move.
+        if (step < mag) {
+          const bbox = getBBox(curStart[0], curStart[1], curEnd[0], curEnd[1]);
+          const arrowLength = 1.5; // in grid units
+          let dx = 0, dy = 0;
+          if (seg.move[0] > 0) dx = arrowLength;
+          else if (seg.move[0] < 0) dx = -arrowLength;
+          if (seg.move[1] > 0) dy = arrowLength;
+          else if (seg.move[1] < 0) dy = -arrowLength;
+          drawArrow(bbox.maxX, bbox.minY, bbox.maxX + dx, bbox.minY + dy);
+          // Display the number of remaining move units.
+          drawText(mag - step, bbox.maxX + 0.2, bbox.minY - 0.2);
+        }
       });
       ctx.restore();
     }
@@ -475,6 +529,20 @@
         scale /= zoomFactor;
       }
       drawPuzzle();
+    });
+
+    // -------------------------------
+    // Keydown Event Handler for Stepping through the Solution
+    // -------------------------------
+    window.addEventListener("keydown", (e) => {
+      // Check if the right arrow key is pressed.
+      if (e.key === "ArrowRight") {
+        // Only step forward if there are remaining moves.
+        if (solutionStep < maxSolutionStep) {
+          solutionStep++;
+          drawPuzzle();
+        }
+      }
     });
 
     // -------------------------------
